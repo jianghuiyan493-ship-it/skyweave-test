@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SkyWeave · 无人机模拟编排</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./studio-theme.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <div class="eyebrow">SKYWEAVE / CREATIVE STUDIO</div>
+          <h1>让想象，成为光。</h1>
+          <div class="workspace-caption">当前工作区：<strong id="workflow-current">素材</strong> · 本地概念预演 · 未连接实机</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="button button-secondary" href="#studio" id="studio-link">建模工作台</a>
+          <a class="button button-secondary" href="#library" id="library-link">方案库 / 图片系列</a>
+          <span id="sim-status" class="status-pill is-live">● 运行中</span>
+          <button id="reset-btn" class="button button-ghost">重置</button>
+          <button id="play-btn" class="button button-primary">暂停仿真</button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="sidebar panel">
+          <div class="panel-heading">
+            <div>
+              <div class="section-kicker">MISSION CONTROL</div>
+              <h2>编队任务</h2>
+            </div>
+            <span id="drone-count" class="count-badge">24</span>
+          </div>
+
+          <label class="field-label" for="scenario-select">场景模板</label>
+          <select id="scenario-select" class="select">
+            <option value="reference" selected>你的原图 · 分层立体灯点</option>
+            <option value="rose">立体玫瑰 · 曲面灯点</option>
+            <option value="city">立体城市 · 建筑灯点</option>
+            <option value="grid">矩阵编队</option>
+            <option value="orbit">环绕巡检</option>
+            <option value="wave">波浪穿越</option>
+            <option value="image">我的图片 · 自动立体灯点</option>
+            <option value="model">独立模型 · 无需原图</option>
+          </select>
+
+          <div class="image-import">
+            <div class="subhead"><span>图片转效果</span><span class="muted">IMAGE → DRONES</span></div>
+            <label id="image-dropzone" class="dropzone" for="image-input">
+              <span class="upload-icon">＋</span>
+              <span><strong>拖入图片 / 点击选择</strong><small>自动区分插画 / 灯光秀 → 点阵浮雕</small></span>
+              <input id="image-input" type="file" accept="image/png,image/jpeg,image/webp" />
+            </label>
+            <div id="image-preview" class="image-preview is-hidden"><img alt="已上传图片预览" /><button id="clear-image-btn" type="button">×</button></div>
+            <div id="cutout-panel" class="processed-panel is-hidden">
+              <small>去底色结果（不是语义人物抠图）</small>
+              <img id="cutout-preview" alt="插画去底色预览">
+            </div>
+            <div id="processed-panel" class="processed-panel is-hidden">
+              <small>提取正视图 · 上方原图供对照</small>
+              <img id="processed-preview" alt="灯点与细线采样结果">
+              <button id="use-all-points" class="button button-secondary full-width">采用全部提取点</button>
+            </div>
+            <p id="import-status" role="status" aria-live="polite">拖入图片，自动区分插画与灯光秀。图片不上传服务器。</p>
+            <details class="import-settings" open>
+              <summary>① 图片优化与轮廓识别</summary>
+              <label class="field-label" for="image-mode">图片处理模式</label>
+              <select id="image-mode" class="select">
+                <option value="auto">自动判断</option>
+                <option value="illustration">插画 / 普通图片（色块 + 轮廓）</option>
+                <option value="lights">夜景灯光秀（独立亮点）</option>
+                <option value="city">城市夜景 / 无人机主体（过滤地面灯光）</option>
+                <option value="upper">上部主体优先 · 鲜艳图案 / 排除下方夜景</option>
+              </select>
+              <div id="upper-subject-settings" hidden>
+                <label class="range-row"><span>保留原图上部 <output id="upper-limit-value">65%</output></span><input id="upper-limit" type="range" min="30" max="100" value="65"></label>
+                <label class="range-row"><span>颜色筛选强度 <output id="vivid-strength-value">25%</output></span><input id="vivid-strength" type="range" min="0" max="80" value="25"></label>
+                <small>先看红色排除区域。图案被截断时增加保留高度；白色或浅色图案缺失时降低颜色强度至 0。框选主体优先于这两个筛选。</small>
+              </div>
+              <label class="white-light"><input id="city-filter" type="checkbox" checked>夜景中尝试排除底部建筑灯光</label>
+              <div class="subject-tools">
+                <strong>主体选区 · 保留完整图案</strong>
+                <p>在下图拖框选择要保留的主体，或排除楼宇。红色区域不参与建模。框选主体优先于自动过滤。</p>
+                <select id="subject-action" class="select" aria-label="选区操作"><option value="keep">框选保留主体</option><option value="exclude">框选排除建筑 / 杂光</option></select>
+                <canvas id="subject-canvas" width="480" height="300" aria-label="主体选区预览，拖动框选"></canvas>
+                <button id="subject-undo" type="button" class="button button-ghost">撤销选区</button>
+                <button id="subject-reset" type="button" class="button button-ghost">清除全部选区</button>
+                <small id="subject-status" role="status">导入图片后可框选。自动过滤是结构规则，不是语义识别；高楼或混杂灯光需要手动排除。</small>
+              </div>
+              <details class="import-settings">
+                <summary>插画去底色与采样</summary>
+                <label class="white-light"><input id="remove-paper" type="checkbox" checked>去除与边缘连通的相近底色</label>
+                <label class="range-row"><span>去底色容差 <output id="background-tolerance-value">45</output></span>
+                  <input id="background-tolerance" type="range" min="5" max="120" step="1" value="45"></label>
+                <label class="range-row"><span>插画采样预算 <output id="art-budget-value">8000</output></span>
+                  <input id="art-budget" type="range" min="500" max="10000" step="100" value="8000"></label>
+                <small>浅色主体误删时降低容差或关闭去底色。复杂背景不会自动识别人、物；岩石、云纹可能一并保留。</small>
+              </details>
+              <label class="white-light"><input id="normalize-light" type="checkbox" checked>自适应亮度 / 背景校正</label>
+              <label class="range-row"><span>夜景亮度阈值 <output id="light-threshold-value">135</output></span>
+                <input id="light-threshold" type="range" min="50" max="240" value="135"></label>
+              <label class="range-row"><span>忽略底部 % <output id="bottom-crop-value">0</output></span>
+                <input id="bottom-crop" type="range" min="0" max="40" value="0"></label>
+              <label class="range-row"><span>采样间距 px <output id="sample-gap-value">3</output></span>
+                <input id="sample-gap" type="range" min="1.5" max="8" step="0.5" value="3"></label>
+              <label class="white-light"><input id="keep-white" type="checkbox" checked>保留白色灯点</label>
+              <small>插画保留暗色与内部色块，夜景提取灯点。点数不是实机计数。底色分割不等于语义识别。</small>
+            </details>
+            <details class="import-settings" open>
+              <summary>② 几何重建（独立于图片颜色）</summary>
+              <label class="field-label" for="depth-method">重建方式</label>
+              <select id="depth-method" class="select">
+                <option value="contour">轮廓包络 → 曲面浮雕</option>
+                <option value="flat">平面轮廓（对照）</option>
+              </select>
+              <label class="range-row"><span>模型厚度 m <output id="relief-depth-value">32</output></span>
+                <input id="relief-depth" type="range" min="0" max="80" value="32"></label>
+              <label class="range-row"><span>轮廓连接 <output id="shape-join-value">3</output></span>
+                <input id="shape-join" type="range" min="1" max="8" step="1" value="3"></label>
+              <label class="range-row"><span>曲面平滑 <output id="shape-smooth-value">4</output></span>
+                <input id="shape-smooth" type="range" min="0" max="12" step="1" value="4"></label>
+              <label class="white-light"><input id="fill-shape" type="checkbox" checked>填充闭合轮廓后推断厚度</label>
+              <label class="white-light"><input id="remove-strays" type="checkbox" checked>清理孤立杂点（可能移除小装饰）</label>
+              <label class="white-light"><input id="model-monochrome" type="checkbox">统一白光，只检查模型形状</label>
+              <img id="depth-preview" class="depth-preview" alt="几何深度场预览：越亮越向前">
+              <small>越亮表示向前凸起。连接过大会合并不相干轮廓；可减小连接、关闭填充。不是 AI 语义建模，不推断真实背面。</small>
+            </details>
+          </div>
+
+          <div class="control-grid">
+            <button class="command-card is-active" data-command="formation">
+              <span class="command-icon">✦</span>
+              <span><strong>队形保持</strong><small>FORMATION</small></span>
+            </button>
+            <button class="command-card" data-command="patrol" disabled title="尚未实现">
+              <span class="command-icon">↻</span>
+              <span><strong>区域巡检</strong><small>PATROL</small></span>
+            </button>
+            <button class="command-card" data-command="avoid" disabled title="尚未实现">
+              <span class="command-icon">◇</span>
+              <span><strong>避障演练</strong><small>AVOIDANCE</small></span>
+            </button>
+            <button class="command-card" data-command="return">
+              <span class="command-icon">⌂</span>
+              <span><strong>返航降落</strong><small>RTL / LAND</small></span>
+            </button>
+          </div>
+
+          <div class="divider"></div>
+          <div class="panel-heading compact">
+            <h3>仿真参数</h3>
+            <span class="muted">实时</span>
+          </div>
+          <label class="range-row">
+            <span>仿真速度 <output id="speed-output">1.0×</output></span>
+            <input id="speed-range" type="range" min="0.25" max="4" step="0.25" value="1" />
+          </label>
+          <label class="range-row">
+            <span>编队紧密度 <output id="cohesion-output">72%</output></span>
+            <input id="cohesion-range" type="range" min="20" max="100" step="1" value="72" />
+          </label>
+          <label class="range-row">
+            <span>无人机架数 <output id="count-output">24 架</output></span>
+            <input id="count-range" type="range" min="0" max="10000" step="1" value="24" />
+            <div class="count-input-row">
+              <input id="count-number" class="count-number" type="number" min="0" max="10000" step="1" value="24" aria-label="无人机架数" />
+              <span class="count-unit">架（0～10000）</span>
+            </div>
+          </label>
+
+          <div class="sidebar-footer">
+            <div class="button-row">
+              <button id="add-drone-btn" class="button button-secondary">＋ 添加</button>
+              <button id="remove-drone-btn" class="button button-ghost">− 减少</button>
+            </div>
+            <button id="export-btn" class="button button-secondary full-width">⇩ 保存模型与配置 JSON</button>
+            <label class="button button-ghost full-width model-import-label">⇧ 导入独立模型
+              <input id="model-import" type="file" accept=".json,application/json" hidden>
+            </label>
+            <div class="shortcut-hint">快捷键 <kbd>Space</kbd> 播放 / 暂停</div>
+          </div>
+        </aside>
+
+        <section class="stage panel">
+          <div class="stage-heading">
+            <div><div class="section-kicker">LIGHT &amp; SPACE</div><h2>三维编排视窗</h2></div>
+            <div class="view-size-controls" role="group" aria-label="预览区大小">
+              <button type="button" id="fit-view" class="button button-secondary">居中适配</button>
+              <button type="button" class="button button-ghost" data-view-size="standard" aria-pressed="true">标准</button>
+              <button type="button" class="button button-ghost" data-view-size="large" aria-pressed="false">大预览</button>
+              <button type="button" class="button button-secondary" data-view-size="fullscreen" aria-pressed="false">全屏</button>
+            </div>
+          </div>
+          <p id="view-size-status" class="view-size-status" role="status" aria-live="polite" hidden></p>
+          <div class="scene-controls simulation-tools">
+            <button id="measure-btn" class="button button-secondary" aria-pressed="false">坐标 / 尺寸</button>
+            <button id="transition-btn" class="button button-primary">编队 → 造型 / 重播</button>
+          </div>
+          <div class="transition-panel">
+            <div id="transition-progress-text">准备：空中矩阵 → 当前造型</div>
+            <progress id="transition-progress" max="100" value="0" aria-label="编队转场进度"></progress>
+            <small id="transition-note" role="status">从规则空中矩阵出发；可暂停、调速或重新播放。</small>
+          </div>
+          <div class="scene-controls">
+            <button id="preview-btn" class="button button-primary">直接看成型效果</button>
+            <label><input id="guides-toggle" type="checkbox">工程辅助线 / 冲突标色</label>
+            <span class="muted">模型点阵 · 非照片贴图</span>
+          </div>
+          <div class="scene-controls"><button id="takeoff-btn" class="button button-primary">起飞 / 编队</button><button id="view-perspective" class="button button-ghost">透视</button><button id="view-front" class="button button-ghost">正视</button><label>基准高度 m <input id="height-number" type="number" min="10" max="120" value="50"></label><label>限速 m/s <input id="velocity-number" type="number" min="0.5" max="10" step="0.5" value="5"></label></div><div class="stage-toolbar">
+            <div class="legend">
+              <span><i class="legend-dot dot-active"></i>模拟灯点</span>
+              <span>拖动旋转 · 滚轮缩放</span>
+            </div>
+            <div class="stage-meta"><span id="clock">T+00:00.0</span><span>·</span><span id="fps">60 FPS</span></div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="sim-canvas" aria-label="无人机仿真画布"></canvas>
+            <div class="canvas-overlay">
+              <span class="coordinate">3D / METRES</span>
+              <span class="coordinate">N ↑</span>
+            </div>
+          </div>
+        </section>
+
+        <aside class="inspector panel">
+          <div class="panel-heading">
+            <div>
+              <div class="section-kicker">TELEMETRY</div>
+              <h2>预演诊断</h2>
+            </div>
+            <span class="live-dot"></span>
+          </div>
+          <div class="metric-grid">
+            <div class="metric"><span>模拟设备</span><strong id="online-metric">24 / 24</strong><em>未连接实机</em></div>
+            <div class="metric"><span>最高高度</span><strong id="battery-metric">86%</strong><em class="good">模拟值</em></div>
+            <div class="metric"><span>编队误差</span><strong id="error-metric">0.42 m</strong><em class="good">目标偏差</em></div>
+            <div class="metric"><span>当前最高速度</span><strong id="throughput-metric">1.8k/s</strong><em>实时</em></div>
+            <div class="metric"><span>近距检查</span><strong id="safety-metric">12.4 m</strong><em class="good">阈值 2m（诊断用）</em></div>
+            <div class="metric"><span>预演阶段</span><strong id="progress-metric">18%</strong><em>编排中</em></div>
+          </div>
+
+          <div class="divider"></div>
+          <div class="panel-heading compact"><h3>事件流</h3><span class="muted">最近更新</span></div>
+          <div id="event-feed" class="event-feed"></div>
+          <div class="mission-actions">
+            <button id="emergency-btn" class="button emergency full-width">紧急悬停</button>
+            <button id="land-btn" class="button button-secondary full-width">返航并降落</button>
+          </div>
+          <div class="inspector-footer">
+            <span>引擎状态</span><strong><i class="legend-dot dot-active"></i>仅本地模拟</strong>
+          </div>
+        </aside>
+      </section>
+      <section class="plan-library panel" id="library-page" hidden aria-labelledby="plan-library-title">
+        <section class="series-section" aria-labelledby="series-title">
+          <div class="section-kicker">IMAGE SEQUENCE</div>
+          <h2 id="series-title">图片系列 · 连续变换</h2>
+          <p class="workflow-help">将一组图片放入这里，按顺序生成点阵。造型相同、只需局部亮起时，在后一张卡片选择“只变灯光”，避免整组重新飞行。保存系列会同时保存原图、顺序、模型和转场方式。</p>
+          <div class="series-actions">
+            <label class="button button-primary">＋ 批量添加图片<input id="series-files" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden></label>
+            <input id="series-name" class="plan-name-input" maxlength="60" placeholder="系列名称，例如：花开四季" aria-label="系列名称">
+            <button class="button button-secondary" id="series-save">保存整个系列</button>
+            <button class="button button-ghost" id="series-new">新建系列</button>
+          </div>
+          <div class="series-actions">
+            <label>机队上限 <input id="series-count" type="number" min="1" max="10000" value="2000"></label>
+            <label>每幕停留 / 秒 <input id="series-hold" type="number" min="0" max="60" step="0.5" value="3"></label>
+            <button class="button button-primary" id="series-play">▶ 演示整个系列</button>
+            <button class="button button-secondary" id="series-video">城市夜景 / 导出视频</button>
+            <span class="muted">转场时长由距离与工作台限速决定 · 概念预演</span>
+          </div>
+          <p id="series-status" role="status" aria-live="polite">支持批量选择或拖入 PNG / JPG / WEBP，单张不超过 25 MB，每个系列最多 20 张。</p>
+          <div id="series-frames" class="series-frames"></div>
+          <div class="library-subheading"><span>已保存的图片系列</span><small>原图 + 点阵 + 顺序 · 当前浏览器本地保存</small></div>
+          <div id="series-saved" class="plan-list"></div>
+          <p class="workflow-help">原图保存在当前浏览器中，清理站点数据会删除。变换是限速点阵预演，尚不具备避碰规划，不能作为实机航线。</p>
+        </section>
+        <div class="plan-library-heading">
+          <div>
+            <div class="section-kicker">ASSET LIBRARY</div>
+            <h2 id="plan-library-title">方案库</h2>
+            <p>把图片识别结果保存成可重复调用的建模方案，后续可继续接入飞行方案与脚本。</p>
+          </div>
+          <div class="plan-library-actions">
+            <input id="plan-name" class="plan-name-input" type="text" maxlength="40" placeholder="给当前图片建模方案命名" />
+            <button id="save-image-plan" class="button button-primary">保存图片建模方案</button>
+          </div>
+        </div>
+        <div class="library-columns">
+          <div class="library-main">
+            <div class="library-subheading"><span>图片建模方案</span><small id="image-plan-count">0 个本地方案</small></div>
+            <div id="image-plan-list" class="plan-list">
+              <div class="library-empty">还没有保存的图片建模方案。先在上方导入图片并完成识别。</div>
+            </div>
+          </div>
+          <div class="library-placeholders" aria-label="后续方案类型">
+            <div class="library-placeholder is-next"><span>FLIGHT PLAN · 待扩展</span><strong>飞行方案</strong><small>航点、转场、速度与高度</small></div>
+            <div class="library-placeholder"><span>SCRIPT · 待扩展</span><strong>脚本储存</strong><small>动作编排与时间轴</small></div>
+            <div class="library-placeholder"><span>LINK · 待扩展</span><strong>飞行连接</strong><small>设备与通信连接管理</small></div>
+          </div>
+        </div>
+      </section>
+      <footer class="studio-footer"><span>SKYWEAVE · 无人机灯光创作工作台</span><span>本地处理 / 概念预演 / 非实机航线</span></footer>
+    </main>
+    <script src="./reference-dots.js"></script>
+    <script src="./image-pipeline.js"></script>
+    <script src="./illustration-pipeline.js"></script>
+    <script src="./reconstruction.js"></script>
+    <script src="./model-store.js"></script>
+    <script src="./image-workflow.js"></script>
+    <script src="./models.js"></script>
+    <script src="./scene.js"></script>
+    <script src="./scene-tools.js"></script>
+    <script src="./app.js"></script>
+    <script src="./workspace-ui.js"></script>
+    <script src="./subject-selection.js"></script>
+    <script src="./plan-library.js"></script>
+    <script src="./series-lighting.js"></script>
+    <script src="./series-library.js"></script>
+    <script src="./view-size.js"></script>
+    <script src="./import-workbench.js"></script>
+    <script src="./video-engine.js"></script>
+    <script src="./video-export.js"></script>
+    <script src="./workbench-series.js"></script>
+  </body>
+</html>
