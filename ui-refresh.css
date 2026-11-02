@@ -81,3 +81,13 @@ body.home-mode{background:#05070b;color:#edf2f5;color-scheme:dark}
 @media(max-width:760px){.workflow-strip{padding:14px 12px}.workflow-strip-heading{align-items:flex-start;flex-direction:column;gap:5px}.workflow-strip .workflow-nav{display:flex;flex-direction:row;overflow-x:auto;padding-bottom:7px;scroll-snap-type:x proximity;scrollbar-width:thin;scrollbar-color:#6a8c48 transparent}.workflow-strip .workflow-step{flex:0 0 170px;scroll-snap-align:start}.workflow-strip .workflow-step small{font-size:10px}.workflow-strip .workflow-step strong{font-size:14px}}
 .workspace .stage>.canvas-wrap{min-height:470px}
 .sidebar .dropzone{background:#ffffff04;border:1px dashed #a3e63544;border-radius:18px;color:#dce8d7}.sidebar .dropzone:hover{background:#a3e63508;border-color:#a3e635}
+
+/* Keep the workflow and form controls on the same neutral/green palette. */
+.workflow-strip{border-bottom-color:transparent;box-shadow:none}
+.workflow-strip .workflow-step[aria-current="step"]{box-shadow:none}
+.workspace input[type="range"],.workspace input[type="checkbox"],.workspace input[type="radio"],.workspace progress{accent-color:#a3e635}
+.workspace input[type="range"]{background:transparent}
+.sidebar .workflow-status,.sidebar #import-status{background:#ffffff05;border-color:#a3e63530;color:#cbd8c9}
+.sidebar .workflow-status{border-radius:12px}
+.sidebar .import-settings summary,.sidebar .range-row,.sidebar .field-label{color:#cbd8c9}
+.sidebar,.inspector{scrollbar-color:#52604d transparent}
