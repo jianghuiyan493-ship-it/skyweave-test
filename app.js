@@ -3,8 +3,8 @@ const ctx = canvas.getContext("2d", { alpha: false });
 const $ = (selector) => document.querySelector(selector);
 
 const state = {
-  running: true, scenario: "reference", command: "formation", speed: 1, cohesion: .72,
-  count: referenceDots.length, elapsed: 0, lastFrame: performance.now(), fps: 60,
+  running: false, scenario: "empty", command: "formation", speed: 1, cohesion: .72,
+  count: 0, elapsed: 0, lastFrame: performance.now(), fps: 60,
   image: null, imagePoints: [], landing: false,
   drones: [], trails: [], events: [
     ["00:00:04", "编队已稳定，<b>24</b> 台设备进入队形保持"],
@@ -84,7 +84,7 @@ $("#play-btn").addEventListener("click", () => {
   $("#sim-status").classList.toggle("is-live", state.running);
 });
 $("#reset-btn").addEventListener("click", () => { state.elapsed = 0; initDrones(); });
-$("#scenario-select").addEventListener("change", (e) => { state.scenario = e.target.value; presentation.preview=true; previewFormation(); updateMetrics(); state.events.unshift(["NOW", `场景切换为 <b>${e.target.options[e.target.selectedIndex].text}</b>`]); state.events = state.events.slice(0, 4); renderEvents(); });
+$("#scenario-select").addEventListener("change", (e) => { state.scenario = e.target.value; if(state.scenario==="empty")state.count=0;else if(!state.count)state.count=400; presentation.preview=true; previewFormation(); updateMetrics(); state.events.unshift(["NOW", `场景切换为 <b>${e.target.options[e.target.selectedIndex].text}</b>`]); state.events = state.events.slice(0, 4); renderEvents(); });
 $("#speed-range").addEventListener("input", (e) => { state.speed = Number(e.target.value); $("#speed-output").textContent = `${state.speed.toFixed(2).replace(".00", "")}×`; });
 $("#cohesion-range").addEventListener("input", (e) => { state.cohesion = Number(e.target.value) / 100; updateMetrics(); });
 document.querySelectorAll(".command-card").forEach((button) => button.addEventListener("click", () => {

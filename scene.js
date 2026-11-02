@@ -24,6 +24,7 @@ function fitSceneView(points=state.drones){
   camera.distance=distance;camera.autoFit=true;
 }
 function previewFormation() {
+  if(state.scenario==="empty"){showEmptyWorkspace();return;}
   clearTransition();
   rebuildModel();
   flight.phase="preview";
@@ -54,6 +55,7 @@ function homeFor(i) {
     y: (Math.floor(i / cols) - (Math.ceil(state.count / cols) - 1) / 2) * flight.spacing, z: 0 };
 }
 function sceneInit() {
+  if(state.scenario==="empty"){showEmptyWorkspace();return;}
   clearTransition();
   flight.phase = "ground";
   state.landing = false;
@@ -63,6 +65,13 @@ function sceneInit() {
   camera.distance = Math.max(220, Math.sqrt(state.count) * flight.spacing * 2.2);
   rebuildModel();
   if(presentation.preview)previewFormation();
+}
+function showEmptyWorkspace() {
+  clearTransition();
+  state.running=false;state.landing=false;state.count=0;state.drones=[];
+  presentation.points=[];presentation.preview=true;flight.phase="preview";flight.error=0;
+  $("#sim-status").textContent="等待导入图片";
+  $("#sim-status").classList.remove("is-live");
 }
 function showTarget(i) {
   const home = homeFor(i);
@@ -155,6 +164,18 @@ function sceneDraw() {
   const sky=ctx.createLinearGradient(0,0,0,h);
   sky.addColorStop(0,"#050509");sky.addColorStop(.55,"#090910");sky.addColorStop(1,"#0d0c15");
   ctx.fillStyle=sky;ctx.fillRect(0,0,w,h);
+  if(state.scenario==="empty"){
+    ctx.save();ctx.textAlign="center";ctx.fillStyle="#c5d9e6";ctx.font="18px sans-serif";
+    ctx.fillText("导入图片，开始创作",w/2,h/2);
+    ctx.fillStyle="#8c9aaa";ctx.font="13px sans-serif";
+    ctx.fillText("拖入图片，或点击左侧「导入 / 替换图片」",w/2,h/2+30);
+    ctx.restore();
+    $("#clock").textContent=`T+${formatTime(state.elapsed)}`;
+    $("#fps").textContent=`${Math.round(state.fps)} FPS`;
+    if(performance.now()-metricTimer>250){sceneMetrics();metricTimer=performance.now();}
+    return;
+  }
+
   const extent=Math.max(100,Math.ceil(Math.sqrt(state.count)*flight.spacing/20)*10+30);
   ctx.lineWidth=1;
   if(presentation.guides) {
@@ -225,6 +246,7 @@ function sceneMetrics(){
   if(typeof syncWorkspacePlayback==="function")syncWorkspacePlayback();
 }
 function beginFlight(){
+  if(state.scenario==="empty")return;
   clearTransition();
   if(presentation.preview) {
     presentation.preview=false;

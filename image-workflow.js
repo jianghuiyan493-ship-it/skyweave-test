@@ -145,8 +145,8 @@ function clearUploadedImage(){
   $("#depth-preview").removeAttribute("src");
   $("#cutout-panel").classList.add("is-hidden");$("#cutout-preview").removeAttribute("src");
   state.image=null;state.imagePoints=[];
-  state.scenario="reference";$("#scenario-select").value="reference";
-  presentation.preview=true;setDroneCount(referenceDots.length);
+  state.scenario="empty";$("#scenario-select").value="empty";
+  presentation.preview=true;setDroneCount(0);
   uploadStatus("拖入图片：自动区分灯光秀与普通插画，生成点阵浮雕。");
 }
 function setupImageWorkflow(){
