@@ -9,7 +9,7 @@
     const colors=frames.map(f=>f.points.map(p=>rgb(p.color)));
     const drones=frames[0].points.map(p=>({...p,vx:0,vy:0,vz:0}));
     const playback={frames,drones,index:0,phase:"hold",elapsed:0,held:0,progress:0,done:false};
-    let initial=0,lightElapsed=0;
+    let initial=0,lightElapsed=0,cueMotion=null,cueElapsed=0;
     function step(dt){
       if(playback.done)return;
       playback.elapsed+=dt;
@@ -19,11 +19,19 @@
           if(playback.index===frames.length-1){playback.done=true;return;}
           playback.index++;playback.phase="transition";playback.held=0;lightElapsed=0;
           initial=drones.reduce((sum,d,i)=>{const p=frames[playback.index].points[i];return sum+Math.hypot(p.x-d.x,p.y-d.y,p.z-d.z);},0);
+          const cue=frames[playback.index].transitionCue;
+          cueMotion=cue?root.TransitionCues.create(drones,frames[playback.index].points,cue,{vmax,accel}):null;cueElapsed=0;
         }
         return;
       }
       let arrived=true,remaining=0;
       const target=frames[playback.index].points;
+      if(cueMotion){
+        cueElapsed+=dt;cueMotion.sample(cueElapsed).forEach((p,i)=>Object.assign(drones[i],p,{vx:0,vy:0,vz:0}));
+        playback.progress=Math.min(1,cueElapsed/cueMotion.duration);
+        if(playback.progress===1){playback.phase="hold";playback.held=0;}
+        return;
+      }
       const lightOnly=frames[playback.index].transitionMode==="lights";
       if(!lightOnly)drones.forEach((d,i)=>{
         const p=target[i],dx=p.x-d.x,dy=p.y-d.y,dz=p.z-d.z,distance=Math.hypot(dx,dy,dz);

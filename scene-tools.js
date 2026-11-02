@@ -89,6 +89,12 @@ function startFormationTransition(){
   return true;
 }
 function updateTransitionHUD(){
+  if(state.scenario==="empty"){
+    $("#transition-progress").value=0;
+    setSceneText("#transition-progress-text","未开始 · 请先导入图片或选择示例");
+    setSceneText("#transition-note","生成造型后，可预演从空中矩阵到目标造型的转场。");
+    return;
+  }
   const t=flight.transition;
   $("#transition-progress").value=t?Math.round(t.progress*100):0;
   $("#transition-progress-text").textContent=t?

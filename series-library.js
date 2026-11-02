@@ -45,7 +45,7 @@ function renderSeriesFrames(){
     const cueLabel=document.createElement('label');cueLabel.className='series-cue-label';cueLabel.textContent=index?'从上一张切换到此图':'第一幕（系列起点）';
     const cue=document.createElement('select');cue.className='select';cue.disabled=index===0||imageSeries.busy;
     for(const [value,text] of [['move','移动变换 · 重新组成造型'],['lights','只变灯光 · 保持队形不动']]){const option=document.createElement('option');option.value=value;option.textContent=text;cue.append(option);}
-    cue.value=frame.transitionMode||'move';cue.onchange=()=>{frame.transitionMode=cue.value;imageSeries.dirty=true;seriesMessage('转场已修改。只变灯光会预先安排共同点位，未亮的点保持熄灭。请保存整个系列。');};cueLabel.append(cue);
+    cue.value=frame.transitionMode||'move';cue.onchange=()=>{stopImageSeries();delete frame.transitionCue;delete frame.transitionText;frame.transitionMode=cue.value;imageSeries.dirty=true;renderSeriesFrames();seriesMessage('已切换转场类型并清除该幕文字转场。请保存整个系列。');};cueLabel.append(cue);
     const countLabel=document.createElement('label');countLabel.className='series-cue-label';
     countLabel.textContent=`本幕亮灯架数 · 采样推荐 ${SeriesLighting.recommend(frame.points)} 架`;
     const lightCount=document.createElement('input');lightCount.type='number';lightCount.min='0';lightCount.max='10000';lightCount.step='1';
@@ -85,7 +85,7 @@ async function decodeSeriesImage(file,options,geometry){
     const pixels=context.getImageData(0,0,c.width,c.height).data;
     const mode=['city','upper'].includes(options.imageMode)?'lights':options.imageMode==='auto'?IllustrationPipeline.detect(pixels,c.width,c.height):options.imageMode;
     const prepared=ImagePipeline.prepareSubject(pixels,c.width,c.height,{...options,cityFilter:mode==='lights'&&(options.cityFilter||options.imageMode==='city')});
-    const result=(mode==='illustration'?IllustrationPipeline:ImagePipeline).extract(prepared.data,c.width,c.height,options);
+    const result=(mode==='portrait'?PortraitPipeline:mode==='illustration'?IllustrationPipeline:ImagePipeline).extract(prepared.data,c.width,c.height,mode==='portrait'?{...options,threshold:options.portraitThreshold??38,budget:Math.min(2000,options.budget)}:options);
     const subjectMask=result.mask?{mask:result.mask,width:result.width,height:result.height}:null;
     const built=Reconstruction.reconstruct(result.dots,result.aspect,{...geometry,subjectMask});
     if(!built.points.length)throw Error('未提取到点阵，请在工作台调整识别参数后重试');
@@ -146,6 +146,19 @@ async function saveImageSeries(){
 }
 function prepareSeriesPlaybackFrames(frames,count){
  const checked=frames.map(frame=>({...frame,points:validateSavedModel({modelType:'preview-only-not-flight-plan',points:frame.points})}));
+ // Use one transform for a stationary lighting group, so scale never introduces
+ // movement into "lights only" cues. Old projects retain their existing scale.
+ for(let start=0;start<checked.length;){
+   let end=start+1;while(end<checked.length&&checked[end].transitionMode==='lights')end++;
+   if(checked.slice(start,end).every(f=>f.geometry?.compactBudget===true)){
+     const prepared=checked.slice(start,end).map(f=>budgetImageSource(f.points,Math.min(count,f.lightCount??count),f.geometry));
+     const scale=Math.min(...prepared.map(p=>p.scale));
+     const combined=scaleLightPoints(prepared.flatMap(p=>p.source),scale);
+     let offset=0;
+     prepared.forEach((p,i)=>{checked[start+i].points=combined.slice(offset,offset+p.source.length);offset+=p.source.length;});
+   }
+   start=end;
+ }
  return SeriesLighting.build(checked,count,resampleLightPoints);
 }
 function orderedSeriesPoints(frame,count){
@@ -160,14 +173,15 @@ async function editSeriesSubject(index){
   try{
   stopImageSeries();location.hash='studio';
   // Restore this frame's own recognition and geometry settings, then allow manual correction.
-  const mapping={threshold:'light-threshold',crop:'bottom-crop',gap:'sample-gap',imageMode:'image-mode',bgTolerance:'background-tolerance',budget:'art-budget',
+  const mapping={portraitDarkGap:'portrait-dark-gap',portraitThreshold:'portrait-threshold',threshold:'light-threshold',crop:'bottom-crop',gap:'sample-gap',imageMode:'image-mode',bgTolerance:'background-tolerance',budget:'art-budget',
     keepWhite:'keep-white',normalize:'normalize-light',removeBackground:'remove-paper',cityFilter:'city-filter',upperLimit:'upper-limit',vividStrength:'vivid-strength'};
   for(const [key,id] of Object.entries(mapping)){
     const value=frame.options?.[key],control=$('#'+id);if(value===undefined||!control)continue;
     if(typeof value==='boolean')control.checked=value;else control.value=value;
     const out=$('#'+id+'-value');if(out)out.textContent=value;
   }
-  const geometry={mode:'depth-method',depth:'relief-depth',join:'shape-join',smooth:'shape-smooth',fillHoles:'fill-shape',denoise:'remove-strays',monochrome:'model-monochrome'};
+  const geometry={compactBudget:'compact-budget',volumeBudget:'volume-budget',mode:'depth-method',depth:'relief-depth',join:'shape-join',smooth:'shape-smooth',fillHoles:'fill-shape',denoise:'remove-strays',monochrome:'model-monochrome'};
+  if($('#compact-budget'))$('#compact-budget').checked=frame.geometry?.compactBudget===true;
   for(const [key,id] of Object.entries(geometry)){
     const value=frame.geometry?.[key];if(value===undefined)continue;
     if(typeof value==='boolean')$('#'+id).checked=value;else $('#'+id).value=value;
@@ -215,6 +229,13 @@ function beginSeriesMorph(playback){
   let initialError=0,maxDistance=0;
   targets.forEach((p,i)=>{const d=state.drones[i],distance=Math.hypot(p.x-d.x,p.y-d.y,p.z-d.z);initialError+=distance;maxDistance=Math.max(maxDistance,distance);});
   flight.phase=playback.lightOnly?'hold':'transition';flight.transition={targets,initialError,remaining:initialError,elapsed:0,progress:0,arrived:0,complete:false,maxDistance};
+  const cue=playback.frames[playback.index].transitionCue;
+  playback.cueMotion=null;
+  if(cue){
+    playback.cueMotion=TransitionCues.create(state.drones.map((d,i)=>({...d,color:`rgb(${playback.fromColors[i].join(',')})`})),
+      points.map(p=>({...p,z:p.z+flight.height})),cue,{vmax:flight.vmax,accel:flight.accel});
+    playback.cueElapsed=0;flight.phase='hold';
+  }
 }
 function seriesRGB(color){return color.startsWith('#')?[1,3,5].map(i=>parseInt(color.slice(i,i+2),16)):(color.match(/\d+/g)||[]).slice(0,3).map(Number);}
 function tickImageSeries(dt){
@@ -223,10 +244,16 @@ function tickImageSeries(dt){
   if(state.count!==p.count||state.scenario!=='model'){stopImageSeries();return;}
   if(p.phase==='transition'){
     if(!flight.transition){stopImageSeries();return;}
-    if(p.lightOnly){p.lightElapsed+=dt*state.speed;flight.transition.progress=Math.min(1,p.lightElapsed/.8);flight.transition.complete=p.lightElapsed>=.8;}
+    if(p.cueMotion){
+      p.cueElapsed+=dt*state.speed;
+      const samples=p.cueMotion.sample(p.cueElapsed);
+      samples.forEach((q,i)=>{Object.assign(state.drones[i],q,{vx:0,vy:0,vz:0});presentation.points[i].color=q.color;});
+      flight.transition.progress=Math.min(1,p.cueElapsed/p.cueMotion.duration);
+      flight.transition.complete=p.cueElapsed>=p.cueMotion.duration;
+    }else if(p.lightOnly){p.lightElapsed+=dt*state.speed;flight.transition.progress=Math.min(1,p.lightElapsed/.8);flight.transition.complete=p.lightElapsed>=.8;}
     const amount=flight.transition.progress;
     const target=p.frames[p.index].points;
-    presentation.points.forEach((point,i)=>{const a=p.fromColors[i],b=p.toColors[i];point.color=`rgb(${a.map((v,k)=>Math.round(v+(b[k]-v)*amount)).join(',')})`;});
+    if(!p.cueMotion)presentation.points.forEach((point,i)=>{const a=p.fromColors[i],b=p.toColors[i];point.color=`rgb(${a.map((v,k)=>Math.round(v+(b[k]-v)*amount)).join(',')})`;});
     if(flight.transition.complete){p.phase='hold';p.held=0;presentation.points=target.map(point=>({...point}));}
   }else{
     p.held+=dt*state.speed;
@@ -239,7 +266,7 @@ function tickImageSeries(dt){
 }
 function updateSeriesPlayer(){
   const p=imageSeries.playback;if(!p)return;
-  $('#series-player-status').textContent=`${p.index+1}/${p.frames.length} · ${p.frames[p.index].name} · 本幕亮灯 ${p.frames[p.index].litCount}/${p.count} 架 · ${p.phase==='hold'?'停留':`变换 ${Math.round((flight.transition?.progress||0)*100)}%`}${state.running?'':' · 已暂停'}`;
+  $('#series-player-status').textContent=`${p.index+1}/${p.frames.length} · ${p.frames[p.index].name} · 本幕亮灯 ${p.frames[p.index].litCount}/${p.count} 架 · ${p.phase==='hold'?'停留':`变换 ${Math.round((flight.transition?.progress||0)*100)}%${p.cueMotion?' · 实际 '+p.cueMotion.duration.toFixed(1)+' 秒':''}`}${state.running?'':' · 已暂停'}`;
   $('#series-pause').disabled=false;$('#series-pause').textContent=state.running?'暂停系列':'继续系列';
 }
 function stopImageSeries(){

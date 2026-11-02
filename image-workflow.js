@@ -9,6 +9,8 @@ function importOptions(){
     keepWhite:$("#keep-white").checked,gap:Number($("#sample-gap").value)||3,
     normalize:$("#normalize-light").checked,
     imageMode:$("#image-mode").value,
+    portraitThreshold:Number($("#portrait-threshold")?.value??38),
+    portraitDarkGap:Number($("#portrait-dark-gap")?.value??6),
     upperLimit:Number($("#upper-limit")?.value??65),vividStrength:Number($("#vivid-strength")?.value??25),
     bgTolerance:Number($("#background-tolerance").value)||45,
     budget:Number($("#art-budget").value)||8000,
@@ -18,7 +20,10 @@ function importOptions(){
     subjectExclude:typeof subjectSelection!=="undefined"?subjectSelection.exclude:[]};
 }
 function reconstructionOptions(){
-  return {mode:$("#depth-method").value==="flat"?"flat":"contour",
+  if($("#image-mode").value==="portrait")return {mode:"flat",depth:0,denoise:false,monochrome:false,compactBudget:false};
+  return {mode:["flat","shell","solid","layered"].includes($("#depth-method").value)?$("#depth-method").value:"contour",
+    compactBudget:!!$("#compact-budget")?.checked,
+    volumeBudget:Number($("#volume-budget")?.value??6000),
     depth:Number($("#relief-depth").value),join:Number($("#shape-join").value)||3,
     smooth:Number($("#shape-smooth").value)||0,fillHoles:$("#fill-shape").checked,
     denoise:$("#remove-strays").checked,monochrome:$("#model-monochrome").checked};
@@ -66,6 +71,7 @@ function applyUploadedModel(resetCount) {
   state.scenario="image";$("#scenario-select").value="image";
   presentation.preview=true;
   if(resetCount)state.count=Math.min(10000,upload.points.length);
+  if(upload.detectedMode==="portrait")state.count=upload.points.length;
   state.image=upload.image;
   previewFormation();updateMetrics();sceneMetrics();
   state.running=true;$("#play-btn").textContent="暂停仿真";
@@ -74,8 +80,15 @@ function applyUploadedModel(resetCount) {
 function updateUploadCountStatus(){
   const source=upload.points.length,extra=Math.max(0,state.count-source);
   if(!source){uploadStatus("没有可用灯点，请上传图片或调整识别参数。",true);return;}
-  const mode=upload.detectedMode==="illustration"?"插画：去底色 + 外轮廓 + 内部细节 + 色块采样":"灯光秀：亮点 + 细线采样";
-  uploadStatus(`${mode}\n提取 ${source} 点 · 排除 ${upload.removed} 个孤立点 · 当前 ${state.count} 架\n${extra ? `另有 ${extra} 个生成补点（非原图细节）` : state.count<source ? "已按架数抽样；可点「采用全部提取点」恢复细节" : "使用全部提取点"}\n几何浮雕，不是完整人物或真实背面重建。`);
+  const mode=upload.detectedMode==="portrait"?"黑白明暗：统一白光 · 规则间距 · 暗部留空（不是面部识别）":upload.detectedMode==="illustration"?"插画：去底色 + 外轮廓 + 内部细节 + 色块采样":"灯光秀：亮点 + 细线采样";
+  const geometryMode=reconstructionOptions().mode,volume=["shell","solid","layered"].includes(geometryMode);
+  const explanation=geometryMode==="shell"?
+    "正面优先保留原图灯点；背面和侧边只是稀疏轮廓假设。先看正面识别，再检查侧面。":
+    geometryMode==="layered"?"结构分层模式保留完整正面，只把少量间隔采样点放入浅层，避免整面鼓包；这是可编辑的空间假设，不是照片真实深度。":
+    geometryMode==="solid"?"实验性体积填充会重采样整个主体，可能丢失五官和轮廓细节；建议切回“原图正面优先”。":
+    extra?`另有 ${extra} 个生成补点（非原图细节）`:state.count<source?"已按架数抽样；可点「采用全部提取点」恢复细节":"使用全部提取点";
+  const compact=reconstructionOptions().compactBudget?`\n低架数优化：空间分区采样 · 尺寸 ${Math.round((upload.budgetScale??1)*100)}% · 正面优先（非语义识别）`:'';
+  uploadStatus(`${mode}\n${volume?"几何预演":"提取"} ${source} 点 · 排除 ${upload.removed} 个孤立点 · 当前 ${state.count} 架${compact}\n${explanation}\n复杂图片仍需人工选取主体；单张图片不提供真实背面或完整三维信息。`);
 }
 async function processUploadedPixels(resetCount=true) {
   if(!upload.pixels)return;
@@ -86,9 +99,10 @@ async function processUploadedPixels(resetCount=true) {
   if(token!==upload.token)return;
   try{
     const options=importOptions();
-    const mode=["city","upper"].includes(options.imageMode)?"lights":["lights","illustration"].includes(options.imageMode)?options.imageMode:IllustrationPipeline.detect(upload.pixels,upload.width,upload.height);
+    const mode=["city","upper"].includes(options.imageMode)?"lights":["lights","illustration","portrait"].includes(options.imageMode)?options.imageMode:IllustrationPipeline.detect(upload.pixels,upload.width,upload.height);
     const prepared=ImagePipeline.prepareSubject(upload.pixels,upload.width,upload.height,{...options,cityFilter:mode==="lights"&&(options.cityFilter||options.imageMode==="city")});
-    const result=mode==="illustration"?
+    if(mode==="portrait"&&(resetCount||upload.portraitBudget==null))upload.portraitBudget=resetCount?Math.min(2000,options.budget):state.count;
+    const result=mode==="portrait"?PortraitPipeline.extract(prepared.data,upload.width,upload.height,{...options,threshold:options.portraitThreshold,budget:upload.portraitBudget}):mode==="illustration"?
       IllustrationPipeline.extract(prepared.data,upload.width,upload.height,options):
       ImagePipeline.extract(prepared.data,upload.width,upload.height,options);
     if(token!==upload.token)return;
@@ -150,6 +164,19 @@ function clearUploadedImage(){
   uploadStatus("拖入图片：自动区分灯光秀与普通插画，生成点阵浮雕。");
 }
 function setupImageWorkflow(){
+  $("#portrait-dark-gap")?.addEventListener("input",e=>{
+    $("#portrait-dark-gap-value").textContent=e.target.value;
+    clearTimeout(upload.timer);upload.timer=setTimeout(()=>processUploadedPixels(false),180);
+  });
+  $("#portrait-threshold")?.addEventListener("input",e=>{
+    $("#portrait-threshold-value").textContent=e.target.value;
+    clearTimeout(upload.timer);upload.timer=setTimeout(()=>processUploadedPixels(false),180);
+  });
+  $("#compact-budget")?.addEventListener("change",()=>{if(upload.points.length){previewFormation();updateUploadCountStatus();}});
+  $("#volume-budget")?.addEventListener("input",e=>{
+    $("#volume-budget-value").textContent=e.target.value;
+    clearTimeout(upload.timer);upload.timer=setTimeout(()=>{if(upload.pixels)applyUploadedModel(false);},150);
+  });
   $("#image-input").addEventListener("change",e=>{importLightImage(e.target.files[0]);e.target.value="";});
   $("#clear-image-btn").addEventListener("click",clearUploadedImage);
   // Accept drops on the stage as well as the upload card, preventing file navigation.

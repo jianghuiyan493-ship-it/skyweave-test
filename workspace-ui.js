@@ -96,12 +96,13 @@
     },true);
     document.addEventListener("click",syncWorkspacePlayback);
     select("assets");
-    $("#play-btn").disabled=true;$("#play-btn").textContent="静态预览";
+    syncWorkspacePlayback();
   }
   setupWorkspaceUI();
 })();
 function syncWorkspacePlayback(){
   const preview=flight.phase==="preview";
   $("#play-btn").disabled=preview;
-  $("#play-btn").textContent=preview?"静态预览":state.running?"暂停预演":"继续预演";
+  const label=preview?"静态预览":state.running?"暂停预演":"继续预演";
+  if($("#play-btn").textContent!==label)$("#play-btn").textContent=label;
 }

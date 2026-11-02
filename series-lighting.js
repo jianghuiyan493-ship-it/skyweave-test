@@ -3,7 +3,7 @@
  function recommend(points){
   // One light per small front-view cell: a sampling estimate, not an optimality claim.
   const cells=new Set();
-  for(const p of points)if(p.color!=='#000000'&&p.color!=='rgb(0,0,0)')cells.add(`${Math.round(p.x/1.8)},${Math.round(p.z/1.8)}`);
+  for(const p of points)if(p.color!=='#000000'&&p.color!=='rgb(0,0,0)')cells.add(`${Math.round(p.x/1.8)},${Math.round(p.y/1.8)},${Math.round(p.z/1.8)}`);
   return Math.min(10000,cells.size);
  }
  function budget(frame,count){
@@ -12,10 +12,11 @@
   return Math.min(count,wanted,frame.points.length);
  }
  function build(frames,count,resample){
+  const volumetric=frames.some(f=>['shell','solid'].includes(f.geometry?.mode));
   const order=p=>p.sort((a,b)=>a.x-b.x||a.z-b.z||a.y-b.y),result=[],t=1.8;
-  function add(c,p){const k=`${Math.floor(p.x/t)},${Math.floor(p.z/t)}`;if(!c.has(k))c.set(k,[]);c.get(k).push(p);}
+  function add(c,p){const k=`${Math.floor(p.x/t)},${Math.floor(p.z/t)},${volumetric?Math.floor(p.y/t):0}`;if(!c.has(k))c.set(k,[]);c.get(k).push(p);}
   function near(c,p){const x=Math.floor(p.x/t),z=Math.floor(p.z/t);let best=null,d=t*t;
-   for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++)for(const q of c.get(`${x+dx},${z+dz}`)||[]){const n=(p.x-q.x)**2+(p.z-q.z)**2;if(n<=d){best=q;d=n;}}return best;}
+   for(let dx=-1;dx<=1;dx++)for(let dz=-1;dz<=1;dz++)for(let dy=volumetric?-1:0;dy<=(volumetric?1:0);dy++)for(const q of c.get(`${x+dx},${z+dz},${volumetric?Math.floor(p.y/t)+dy:0}`)||[]){const n=(p.x-q.x)**2+(p.z-q.z)**2+(volumetric?(p.y-q.y)**2:0);if(n<=d){best=q;d=n;}}return best;}
   for(let start=0;start<frames.length;){
    let end=start+1;while(end<frames.length&&frames[end].transitionMode==='lights')end++;
    if(end===start+1){
@@ -35,7 +36,9 @@
      for(const i of eligible)if(!selected.has(i))points[i].color='#000000';
      result.push({name:frames[f].name,transitionMode:f===start?'move':'lights',points,litCount:n,requestedCount:frames[f].lightCount??recommend(frames[f].points)});}}
    start=end;
-  }return result;
+  }
+  result.forEach((frame,i)=>{if(frames[i].transitionCue)frame.transitionCue=JSON.parse(JSON.stringify(frames[i].transitionCue));});
+  return result;
  }
  root.SeriesLighting={build,recommend,budget};if(typeof module!=='undefined')module.exports=root.SeriesLighting;
 })(globalThis);

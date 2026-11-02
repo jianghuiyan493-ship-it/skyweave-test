@@ -1,7 +1,7 @@
 // Local 3D rehearsal in metres. Not a flight controller or certified planner.
 const camera = { yaw: .6, pitch: .38, distance: 290, centerX:0, centerY:0, autoFit:true };
 const flight = { height: 50, vmax: 5, accel: 2, spacing: 4, phase: "ground", conflicts: 0, error: 0, transition:null };
-const presentation = { preview:true, guides:false, measurements:false, points:[], center:80 };
+const presentation = { preview:false, guides:false, measurements:false, points:[], center:80 };
 function rebuildModel() {
   presentation.points=buildShowModel(state.scenario,state.count);
 }
@@ -21,6 +21,8 @@ function fitSceneView(points=state.drones){
     const depth=camera.orthographic?0:ry*cp-z*sp;
     distance=Math.max(distance,Math.abs(rx)*scale/halfW-depth,Math.abs(vertical)*scale/halfH-depth,2-depth);
   }
+  // Do not auto-zoom away the physical size reduction requested for a low budget.
+  if(state.scenario==="image"&&upload.budgetScale>0&&upload.budgetScale<1)distance/=upload.budgetScale;
   camera.distance=distance;camera.autoFit=true;
 }
 function previewFormation() {
@@ -37,10 +39,13 @@ function previewFormation() {
   camera.pitch=state.scenario==="rose"?.85:.16;
   camera.orthographic=false;
   if(state.scenario==="reference"){camera.distance=300;camera.yaw=.32;camera.pitch=.06;}
+  if(state.scenario==="ribbon"){camera.yaw=.10;camera.pitch=.12;camera.orthographic=true;}
   if(state.scenario==="image"){
     const fit=Math.min(Math.max(100,canvas.clientWidth-60)/210,Math.max(100,canvas.clientHeight-110)/(210/upload.aspect));
     camera.distance=Math.max(100,Math.min(canvas.clientWidth,canvas.clientHeight)*1.1/fit);
     camera.yaw=0;camera.pitch=0;camera.orthographic=true;
+    // Imported 2D artwork must remain readable on first view. Side/3D inspection
+    // is opt-in via the camera controls, not a destructive starting perspective.
   }
   if(state.scenario==="model"){
     let span=10;state.drones.forEach(d=>{span=Math.max(span,Math.abs(d.x),Math.abs(d.y),Math.abs(d.z-presentation.center));});
@@ -65,6 +70,11 @@ function sceneInit() {
   camera.distance = Math.max(220, Math.sqrt(state.count) * flight.spacing * 2.2);
   rebuildModel();
   if(presentation.preview)previewFormation();
+  else {
+    camera.yaw=.25;camera.pitch=.85;camera.orthographic=false;
+    fitSceneView();
+    $("#sim-status").textContent="● 地面待机 · 等待起飞";
+  }
 }
 function showEmptyWorkspace() {
   clearTransition();
@@ -165,17 +175,10 @@ function sceneDraw() {
   sky.addColorStop(0,"#050509");sky.addColorStop(.55,"#090910");sky.addColorStop(1,"#0d0c15");
   ctx.fillStyle=sky;ctx.fillRect(0,0,w,h);
   if(state.scenario==="empty"){
-    ctx.save();ctx.textAlign="center";ctx.fillStyle="#c5d9e6";ctx.font="18px sans-serif";
-    ctx.fillText("导入图片，开始创作",w/2,h/2);
-    ctx.fillStyle="#8c9aaa";ctx.font="13px sans-serif";
-    ctx.fillText("拖入图片，或点击左侧「导入 / 替换图片」",w/2,h/2+30);
-    ctx.restore();
-    $("#clock").textContent=`T+${formatTime(state.elapsed)}`;
-    $("#fps").textContent=`${Math.round(state.fps)} FPS`;
+    updateSceneDisplayStats();
     if(performance.now()-metricTimer>250){sceneMetrics();metricTimer=performance.now();}
     return;
   }
-
   const extent=Math.max(100,Math.ceil(Math.sqrt(state.count)*flight.spacing/20)*10+30);
   ctx.lineWidth=1;
   if(presentation.guides) {
@@ -207,7 +210,7 @@ function sceneDraw() {
   });
   visible.sort((a,b)=>b.p.depth-a.p.depth);
   visible.forEach(({p,d,color})=>{
-    const r=state.scenario==="image"?Math.max(.45,Math.min(1.15,p.scale*.27)):Math.max(.65,Math.min(1.9,p.scale*.40));
+    const r=state.scenario==="image"?Math.max(.8,Math.min(1.4,p.scale*.32)):Math.max(.65,Math.min(1.9,p.scale*.40));
     ctx.fillStyle=presentation.guides && d.conflict?"#ff586a":color;
     ctx.globalAlpha=.04;ctx.beginPath();ctx.arc(p.x,p.y,r*1.8,0,Math.PI*2);ctx.fill();
     ctx.globalAlpha=1;ctx.beginPath();ctx.arc(p.x,p.y,r,0,Math.PI*2);ctx.fill();
@@ -217,11 +220,27 @@ function sceneDraw() {
   ctx.fillStyle="#c5d9e6";ctx.font="12px sans-serif";
   ctx.fillText(`${phases[flight.phase]} · 拖动旋转 / 滚轮缩放`,16,h-40);
   ctx.fillStyle="#ffc77f";ctx.fillText(state.scenario==="reference"?"原图灯点 + 人工纵深（浮雕）· 非完整背面模型 / 非实机航线":"概念预演 · 轨迹未认证，禁止直接用于实机",16,h-18);
-  $("#clock").textContent=`T+${formatTime(state.elapsed)}`;
-  $("#fps").textContent=`${Math.round(state.fps)} FPS`;
+  updateSceneDisplayStats();
+
   if(performance.now()-metricTimer>250){sceneMetrics();metricTimer=performance.now();}
 }
+function setSceneText(selector,text){
+  const node=$(selector);if(node.textContent!==text)node.textContent=text;
+}
+let displayStatsTime=-Infinity;
+function updateSceneDisplayStats(){
+  setSceneText("#clock",`T+${formatTime(state.elapsed)}`);
+  const now=performance.now();
+  if(now-displayStatsTime>=1000){setSceneText("#fps",`${Math.round(state.fps)} FPS`);displayStatsTime=now;}
+}
 function sceneMetrics(){
+  if(state.scenario==="empty"){
+    flight.conflicts=0;
+    for(const id of ["online-metric","battery-metric","error-metric","throughput-metric","safety-metric","progress-metric"])setSceneText("#"+id,"未开始");
+    updateTransitionHUD();
+    if(typeof syncWorkspacePlayback==="function")syncWorkspacePlayback();
+    return;
+  }
   // Spatial hashing: flag pairs within the user-visible 2 m diagnostic threshold.
   const cells=new Map(), threshold=2; let close=0,maxHeight=0,maxSpeed=0;
   state.drones.forEach(d=>d.conflict=false);
@@ -241,7 +260,7 @@ function sceneMetrics(){
   $("#throughput-metric").textContent=`${maxSpeed.toFixed(1)} m/s`;
   $("#error-metric").textContent=`${flight.error.toFixed(1)} m`;
   $("#safety-metric").textContent=close ? `${close} 对 <2m` : "未检出 <2m";
-  $("#progress-metric").textContent=flight.transition?`${Math.round(flight.transition.progress*100)}%`:flight.phase==="ground"?"待起飞":"预演中";
+  $("#progress-metric").textContent=flight.transition?`${Math.round(flight.transition.progress*100)}%`:flight.phase==="ground"?"待起飞":flight.phase==="preview"?"静态预览":state.running?"预演中":"已暂停";
   updateTransitionHUD();
   if(typeof syncWorkspacePlayback==="function")syncWorkspacePlayback();
 }

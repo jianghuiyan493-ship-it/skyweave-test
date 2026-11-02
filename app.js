@@ -69,6 +69,7 @@ function updateMetrics() {
   $("#cohesion-output").textContent = `${Math.round(state.cohesion * 100)}%`;
   $("#count-output").textContent = `${state.count} 架`;
   $("#progress-metric").textContent = `${Math.min(99, Math.round(state.elapsed / 1.8))}%`;
+  sceneMetrics();
 }
 
 function frame(now) {
@@ -91,6 +92,11 @@ document.querySelectorAll(".command-card").forEach((button) => button.addEventLi
   document.querySelectorAll(".command-card").forEach((item) => item.classList.remove("is-active")); button.classList.add("is-active"); state.command = button.dataset.command; if (state.command === "return") { $("#land-btn").click(); } else if (state.command === "formation") { beginFlight(); }
 }));
 function setDroneCount(value) {
+  if(state.scenario==="image"&&upload.detectedMode==="portrait"&&upload.pixels){
+    state.count=Math.max(0,Math.min(10000,Math.round(Number(value)||0)));
+    upload.portraitBudget=state.count;
+    processUploadedPixels(false);return;
+  }
   if(flight.transition)presentation.preview=true;
   state.count = Math.max(0, Math.min(10000, Math.round(Number(value) || 0)));
   $("#count-range").value = state.count;

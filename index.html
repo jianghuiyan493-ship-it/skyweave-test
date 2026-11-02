@@ -6,8 +6,10 @@
     <title>SkyWeave · 无人机模拟编排</title>
     <link rel="stylesheet" href="./styles.css" />
     <link rel="stylesheet" href="./studio-theme.css" />
+    <link rel="stylesheet" href="./ui-refresh.css?v=20261102-workflow" />
   </head>
-  <body>
+  <body class="home-mode">
+    <section id="home-page" aria-label="SkyWeave 首页"></section>
     <main class="app-shell">
       <header class="topbar">
         <div>
@@ -37,10 +39,10 @@
           <label class="field-label" for="scenario-select">场景模板</label>
           <select id="scenario-select" class="select">
             <option value="empty" selected>空白工作台 · 请导入图片</option>
-            <option value="reference">示例图片 · 分层立体灯点</option>
+            <option value="grid">无人机待机 · 矩阵编队</option>
             <option value="rose">立体玫瑰 · 曲面灯点</option>
+            <option value="ribbon">空间光带 · 双组螺旋曲面</option>
             <option value="city">立体城市 · 建筑灯点</option>
-            <option value="grid">矩阵编队</option>
             <option value="orbit">环绕巡检</option>
             <option value="wave">波浪穿越</option>
             <option value="image">我的图片 · 自动立体灯点</option>
@@ -69,7 +71,8 @@
               <summary>① 图片优化与轮廓识别</summary>
               <label class="field-label" for="image-mode">图片处理模式</label>
               <select id="image-mode" class="select">
-                <option value="auto">自动判断</option>
+                <option value="portrait">黑白明暗 · 人像简化（亮白 / 暗部留空）</option>
+                <option value="auto" selected>自动判断</option>
                 <option value="illustration">插画 / 普通图片（色块 + 轮廓）</option>
                 <option value="lights">夜景灯光秀（独立亮点）</option>
                 <option value="city">城市夜景 / 无人机主体（过滤地面灯光）</option>
@@ -100,6 +103,12 @@
                 <small>浅色主体误删时降低容差或关闭去底色。复杂背景不会自动识别人、物；岩石、云纹可能一并保留。</small>
               </details>
               <label class="white-light"><input id="normalize-light" type="checkbox" checked>自适应亮度 / 背景校正</label>
+              <label class="range-row"><span>黑白模式明暗分界 <output id="portrait-threshold-value">38</output></span>
+                <input id="portrait-threshold" type="range" min="8" max="160" value="38"></label>
+              <label class="range-row"><span>暗部留白扩展 <output id="portrait-dark-gap-value">6</output></span>
+                <input id="portrait-dark-gap" type="range" min="0" max="12" step="1" value="6"></label>
+              <small>扩大密集亮面内部的黑区，让眼睛、眉毛、嘴部更分明；0 为关闭。此项按明暗区域处理，不是人脸识别，过大会损失鼻梁与手部细节。</small>
+              <small>黑白模式首次以最多 2000 点生成；提高明暗分界可扩大眼、嘴与阴影的黑色留空。固定白光、平面点阵，不填充背面。</small>
               <label class="range-row"><span>夜景亮度阈值 <output id="light-threshold-value">135</output></span>
                 <input id="light-threshold" type="range" min="50" max="240" value="135"></label>
               <label class="range-row"><span>忽略底部 % <output id="bottom-crop-value">0</output></span>
@@ -113,11 +122,18 @@
               <summary>② 几何重建（独立于图片颜色）</summary>
               <label class="field-label" for="depth-method">重建方式</label>
               <select id="depth-method" class="select">
+                <option value="shell" selected>原图正面优先 · 稀疏背面与侧边</option>
+                <option value="layered">结构分层 · 正面细节 + 浅层空间</option>
+                <option value="solid">实验性体积填充 · 易丢失原图细节</option>
                 <option value="contour">轮廓包络 → 曲面浮雕</option>
                 <option value="flat">平面轮廓（对照）</option>
               </select>
-              <label class="range-row"><span>模型厚度 m <output id="relief-depth-value">32</output></span>
-                <input id="relief-depth" type="range" min="0" max="80" value="32"></label>
+              <label class="white-light"><input id="compact-budget" type="checkbox" checked>低架数优化：正面优先 / 自动收紧尺寸</label>
+              <small>按空间区域分配有限灯点，减少背面补点占用；架数减少时适度缩小造型（最低 40%）。不改变人物与景物的相对布局，不代表识别五官，也不能恢复原图缺失细节。近距警告仍需检查。</small>
+              <label class="range-row"><span>体积点阵预算 <output id="volume-budget-value">6000</output></span><input id="volume-budget" type="range" min="100" max="10000" step="100" value="6000"></label>
+              <small>默认保留原图正面点位，只为侧视加入少量假设点。单张图片不能自动恢复真实背面或理解物体结构；体积填充仅作实验对照。</small>
+              <label class="range-row"><span>假设厚度 m <output id="relief-depth-value">10</output></span>
+                <input id="relief-depth" type="range" min="0" max="80" value="10"></label>
               <label class="range-row"><span>轮廓连接 <output id="shape-join-value">3</output></span>
                 <input id="shape-join" type="range" min="1" max="8" step="1" value="3"></label>
               <label class="range-row"><span>曲面平滑 <output id="shape-smooth-value">4</output></span>
@@ -125,8 +141,8 @@
               <label class="white-light"><input id="fill-shape" type="checkbox" checked>填充闭合轮廓后推断厚度</label>
               <label class="white-light"><input id="remove-strays" type="checkbox" checked>清理孤立杂点（可能移除小装饰）</label>
               <label class="white-light"><input id="model-monochrome" type="checkbox">统一白光，只检查模型形状</label>
-              <img id="depth-preview" class="depth-preview" alt="几何深度场预览：越亮越向前">
-              <small>越亮表示向前凸起。连接过大会合并不相干轮廓；可减小连接、关闭填充。不是 AI 语义建模，不推断真实背面。</small>
+              <img id="depth-preview" class="depth-preview" alt="主体掩膜及轮廓距离预览">
+              <small>此图只辅助查看轮廓距离；默认“正面优先”不再按亮度鼓起。连接过大会合并无关轮廓，可减小连接或关闭填充。当前不是 AI 语义识别，不能从单张图推断真实背面。</small>
             </details>
           </div>
 
@@ -305,19 +321,21 @@
       </section>
       <footer class="studio-footer"><span>SKYWEAVE · 无人机灯光创作工作台</span><span>本地处理 / 概念预演 / 非实机航线</span></footer>
     </main>
-    <script src="./reference-dots.js"></script>
     <script src="./image-pipeline.js"></script>
     <script src="./illustration-pipeline.js"></script>
+    <script src="./portrait-pipeline.js"></script>
     <script src="./reconstruction.js"></script>
     <script src="./model-store.js"></script>
-    <script src="./image-workflow.js?v=20261102-empty"></script>
+    <script src="./image-workflow.js"></script>
+    <script src="./ribbon-model.js"></script>
     <script src="./models.js"></script>
-    <script src="./scene.js?v=20261102-empty"></script>
+    <script src="./scene.js"></script>
     <script src="./scene-tools.js"></script>
-    <script src="./app.js?v=20261102-empty"></script>
+    <script src="./app.js"></script>
     <script src="./workspace-ui.js"></script>
     <script src="./subject-selection.js"></script>
     <script src="./plan-library.js"></script>
+    <script src="./transition-cues.js"></script>
     <script src="./series-lighting.js"></script>
     <script src="./series-library.js"></script>
     <script src="./view-size.js"></script>
@@ -325,5 +343,11 @@
     <script src="./video-engine.js"></script>
     <script src="./video-export.js"></script>
     <script src="./workbench-series.js"></script>
+    <script src="./volume-view.js"></script>
+    <script src="./transition-editor.js"></script>
+    <script src="./ribbon-editor.js"></script>
+    <script src="./hero-particles-data.js"></script>
+    <script src="./ui-refresh.js"></script>
+    <script src="./hero-particles.js"></script>
   </body>
 </html>
