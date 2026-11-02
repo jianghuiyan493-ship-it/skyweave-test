@@ -91,3 +91,19 @@ body.home-mode{background:#05070b;color:#edf2f5;color-scheme:dark}
 .sidebar .workflow-status{border-radius:12px}
 .sidebar .import-settings summary,.sidebar .range-row,.sidebar .field-label{color:#cbd8c9}
 .sidebar,.inspector{scrollbar-color:#52604d transparent}
+
+/* Override the remaining blue-tinted copy from the original studio theme. */
+.workspace :is(.section-kicker,.field-label,.workflow-help,.range-row,.muted,.shortcut-hint,.view-size-status,.coordinate,.stage-toolbar,.canvas-overlay,.sidebar-footer,.inspector-footer,.event time,.event p,.metric span,.metric em,.metric em.good,.import-settings small,.dropzone small,.subject-tools p,.subject-tools small,.image-comparison small,.single-image-heading span,#single-import-state,#transition-progress-text,#transition-note,#workbench-series-status,.volume-view-tools span){color:#aeb8ae}
+.workspace :is(.panel-heading h2,.workflow-pane h3,.single-image-heading strong,.image-comparison summary,.subject-tools strong,.event b,.metric strong){color:#edf2ec}
+.workspace .inspector .section-kicker{color:#8e9c8e}
+.workspace :is(.stage-meta,.legend,.inspector .muted){color:#aeb8ae}
+.workspace .upload-icon{color:#a3e635}
+.workspace kbd{color:#cbd8c9;background:#ffffff09;border-color:#ffffff24}
+.workspace :is(.single-image-actions,.image-comparison,.series-edit-navigation){background:#ffffff05;border-color:#ffffff1d}
+.workspace .metric{border-bottom-color:#ffffff18}
+.workspace .inspector .divider,.workspace .metric-grid{border-color:#ffffff18;background-color:transparent}
+.workspace .inspector-footer{border-color:#ffffff18}
+.workspace .inspector-footer strong{color:#dce8da}
+.workspace :is(.view-size-controls [aria-pressed="true"],.topbar-actions a[aria-current="page"]){background:#a3e63516;color:#c6f58e;border-color:#a3e63555}
+.plan-library :is(.section-kicker,.workflow-help,.muted,.library-subheading small,.plan-card-content small,.plan-card-content time,.series-card small,#series-status){color:#aeb8ae}
+.plan-library :is(.plan-library-heading h2,.library-subheading,.plan-card-content strong,.series-card strong){color:#edf2ec}
