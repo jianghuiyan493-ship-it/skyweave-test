@@ -218,7 +218,7 @@ function sceneDraw() {
   drawMeasurements();
   const phases={preview:"静态造型预览 · 非飞行轨迹",ground:"地面待命",takeoff:"垂直起飞",transition:"编队变换",show:"空中编队",hold:"悬停",return:"返回起飞点上空",landing:"垂直降落"};
   ctx.fillStyle="#c5d9e6";ctx.font="12px sans-serif";
-  ctx.fillText(`${phases[flight.phase]} · 拖动旋转 / 滚轮缩放`,16,h-40);
+  ctx.fillText(`${phases[flight.phase]} · 拖动旋转 / Ctrl + 拖动平移 / 滚轮缩放`,16,h-40);
   ctx.fillStyle="#ffc77f";ctx.fillText(state.scenario==="reference"?"原图灯点 + 人工纵深（浮雕）· 非完整背面模型 / 非实机航线":"概念预演 · 轨迹未认证，禁止直接用于实机",16,h-18);
   updateSceneDisplayStats();
 
@@ -290,13 +290,35 @@ function setupScene(){
   $("#view-front").addEventListener("click",()=>{camera.yaw=0;camera.pitch=0;camera.orthographic=true;fitSceneView();});
   $("#view-perspective").addEventListener("click",()=>{camera.yaw=.6;camera.pitch=.38;camera.orthographic=false;fitSceneView();});
   let drag=null;
-  canvas.addEventListener("pointerdown",e=>{drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId);});
-  canvas.addEventListener("pointermove",e=>{
-    if(!drag)return;camera.autoFit=false;camera.orthographic=false;camera.yaw+=(e.clientX-drag.x)*.006;
-    camera.pitch=Math.max(.03,Math.min(1.4,camera.pitch+(e.clientY-drag.y)*.004));
-    drag={x:e.clientX,y:e.clientY};
+  canvas.addEventListener("pointerdown",e=>{
+    if(e.button!==0||drag)return;
+    drag={x:e.clientX,y:e.clientY,id:e.pointerId};
+    canvas.setPointerCapture(e.pointerId);
+    e.preventDefault();
   });
-  canvas.addEventListener("pointerup",()=>drag=null);
-  canvas.addEventListener("pointercancel",()=>drag=null);
+  canvas.addEventListener("pointermove",e=>{
+    if(!drag||e.pointerId!==drag.id)return;
+    const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+    camera.autoFit=false;
+    if(e.ctrlKey){
+      // Move the view target in the camera's screen plane, at target depth.
+      // Model coordinates and orthographic/perspective mode stay unchanged.
+      const units=camera.distance/(Math.min(canvas.clientWidth,canvas.clientHeight)*1.1);
+      const cy=Math.cos(camera.yaw),sy=Math.sin(camera.yaw),cp=Math.cos(camera.pitch),sp=Math.sin(camera.pitch);
+      camera.centerX+=(-dx*cy+dy*sy*sp)*units;
+      camera.centerY+=(dx*sy+dy*cy*sp)*units;
+      presentation.center+=dy*cp*units;
+    }else{
+      camera.orthographic=false;
+      camera.yaw+=dx*.006;
+      camera.pitch=Math.max(.03,Math.min(1.4,camera.pitch+dy*.004));
+    }
+    drag.x=e.clientX;drag.y=e.clientY;
+  });
+  const endDrag=e=>{if(drag&&e.pointerId===drag.id)drag=null;};
+  canvas.addEventListener("pointerup",endDrag);
+  canvas.addEventListener("pointercancel",endDrag);
+  canvas.addEventListener("lostpointercapture",endDrag);
+  window.addEventListener("blur",()=>drag=null);
   canvas.addEventListener("wheel",e=>{e.preventDefault();camera.autoFit=false;camera.distance=Math.max(8,Math.min(10000,camera.distance*Math.exp(e.deltaY*.001)));},{passive:false});
 }

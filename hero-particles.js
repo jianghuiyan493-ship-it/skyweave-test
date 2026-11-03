@@ -57,8 +57,17 @@
  function wake(){if(!frame&&!document.hidden&&document.body.classList.contains('home-mode'))frame=requestAnimationFrame(tick);}
  function reset(){pointer=null;last=0;wake();}
  function resize(){const rect=surface.getBoundingClientRect();if(!rect.width)return;width=rect.width+padding*2;height=rect.height+padding*2;scale=rect.width/1500;canvas.style.width=width+'px';canvas.style.height=height+'px';const dpr=Math.min(devicePixelRatio||1,2);canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);context.setTransform(dpr,0,0,dpr,0,0);reset();paint();}
- host.addEventListener('pointermove',e=>{if(e.pointerType==='touch'||reduced.matches)return;const r=canvas.getBoundingClientRect();pointer={x:e.clientX-r.left,y:e.clientY-r.top};aim={x:Math.max(-1,Math.min(1,pointer.x/width*2-1)),y:Math.max(-1,Math.min(1,pointer.y/height*2-1))};wake();});
- host.addEventListener('pointerleave',reset);host.addEventListener('pointercancel',reset);
+ // The padded drawing surface extends beyond the link and underneath the copy.
+ // Track its visual bounds even when another homepage element receives the event.
+ document.addEventListener('pointermove',e=>{
+   if(e.pointerType==='touch'||reduced.matches||!document.body.classList.contains('home-mode'))return;
+   const r=canvas.getBoundingClientRect();
+   if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom){if(pointer)reset();return;}
+   pointer={x:(e.clientX-r.left)*width/r.width,y:(e.clientY-r.top)*height/r.height};
+   aim={x:Math.max(-1,Math.min(1,pointer.x/width*2-1)),y:Math.max(-1,Math.min(1,pointer.y/height*2-1))};wake();
+ },{passive:true,capture:true});
+ document.addEventListener('pointerleave',reset);document.addEventListener('pointercancel',reset);
+ window.addEventListener('blur',reset);
  window.addEventListener('hashchange',()=>{reset();requestAnimationFrame(resize);});
  document.addEventListener('visibilitychange',reset);
  reduced.addEventListener('change',()=>{for(const p of moving)p.dx=p.dy=p.vx=p.vy=0;sway.x=sway.y=sway.angle=0;moving.clear();reset();paint();});
